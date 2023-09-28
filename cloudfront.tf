@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "OriginBucket" {
-  bucket = "RebeccaBroosStaticWebsiteBucket"
+  bucket = "166004684967-static-site-bucket"
   acl    = "private"
 }
 
