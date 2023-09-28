@@ -3,14 +3,17 @@ resource "aws_s3_bucket" "OriginBucket" {
   acl    = "private"
 }
 
-/*
+resource "aws_cloudfront_origin_access_identity" "OriginAccessIdentity" {
+  comment = "Some comment"
+}
+
 resource "aws_cloudfront_distribution" "s3_distribution" {
   origin {
-    domain_name = "${aws_s3_bucket.b.bucket_domain_name}"
+    domain_name = "${aws_s3_bucket.OriginBucket.bucket_domain_name}"
     origin_id   = "myS3Origin"
 
     s3_origin_config {
-      origin_access_identity = "origin-access-identity/cloudfront/ABCDEFG1234567"
+      origin_access_identity = aws_cloudfront_origin_access_identity.OriginAccessIdentity.cloudfront_access_identity_path
     }
   }
 
@@ -19,13 +22,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   comment             = "Example static site"
   default_root_object = "index.html"
 
-  logging_config {
-    include_cookies = false
-    bucket          = "mylogs.s3.amazonaws.com"
-    prefix          = "myprefix"
-  }
-
-  aliases = ["rebeccabroos.com"]
+  aliases = ["rebeccabroosstaticsite.com"]
 
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -45,22 +42,8 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     default_ttl            = 3600
     max_ttl                = 86400
   }
-
-  price_class = "PriceClass_200"
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "whitelist"
-      locations        = ["US", "CA", "GB", "DE"]
-    }
-  }
-
-  tags {
-    Environment = "production"
-  }
-
+  
   viewer_certificate {
     cloudfront_default_certificate = true
   }
 }
-*/
