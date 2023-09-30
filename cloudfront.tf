@@ -1,32 +1,46 @@
-resource "aws_s3_bucket" "OriginBucket" {
-  bucket = "166004684967-static-site-origin-bucket"
-  acl    = "private"
+resource "aws_s3_bucket" "webapp" {
+  bucket = "${var.webapp_subdomain}.${replace(data.aws_route53_zone.zone.name, "/[.]$/", "")}"
+  policy = data.aws_iam_policy_document.webapp.json
 }
 
-resource "aws_cloudfront_origin_access_identity" "OriginAccessIdentity" {
-  comment = "Some comment"
+data "aws_iam_policy_document" "webapp" {
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      "arn:aws:s3:::${var.webapp_subdomain}.${replace(data.aws_route53_zone.zone.name, "/[.]$/", "")}",
+      "arn:aws:s3:::${var.webapp_subdomain}.${replace(data.aws_route53_zone.zone.name, "/[.]$/", "")}/*",
+    ]
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_cloudfront_origin_access_identity.webapp.iam_arn]
+    }
+  }
 }
 
-resource "aws_cloudfront_distribution" "s3_distribution" {
+resource "aws_cloudfront_distribution" "webapp" {
   origin {
-    origin_id   = "myS3Origin"
-
+    domain_name = aws_s3_bucket.webapp.bucket_regional_domain_name
+    origin_id   = "${var.name_prefix}minecraft-spot-origin"
     s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.OriginAccessIdentity.cloudfront_access_identity_path
+      origin_access_identity = aws_cloudfront_origin_access_identity.webapp.cloudfront_access_identity_path
     }
   }
 
   enabled             = true
-  is_ipv6_enabled     = true
-  comment             = "Example static site"
   default_root_object = "index.html"
+  is_ipv6_enabled     = true
+  aliases             = ["${var.webapp_subdomain}.${replace(data.aws_route53_zone.zone.name, "/[.]$/", "")}"]
 
-  aliases = ["rebeccabroosstaticsite.com"]
+  price_class = var.cloudfront_price_class
 
   default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "myS3Origin"
+    target_origin_id = "${var.name_prefix}minecraft-spot-origin"
 
     forwarded_values {
       query_string = false
@@ -36,7 +50,7 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
       }
     }
 
-    viewer_protocol_policy = "allow-all"
+    viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
     default_ttl            = 3600
     max_ttl                = 86400
@@ -44,11 +58,41 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
 
   restrictions {
     geo_restriction {
-      restriction_type = "none"
+      restriction_type = "whitelist"
+      locations        = var.cloudfront_location_whitelist
     }
   }
 
-  viewer_certificate {
-    cloudfront_default_certificate = true
+  custom_error_response {
+    error_code            = "404"
+    error_caching_min_ttl = "0"
+    response_code         = "200"
+    response_page_path    = "/index.html"
   }
+
+  viewer_certificate {
+    acm_certificate_arn      = aws_acm_certificate.webapp.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.1_2016"
+  }
+}
+
+resource "aws_cloudfront_origin_access_identity" "webapp" {
+  comment = "${var.name_prefix}minecraft-spot-origin-access-identity"
+}
+
+resource "aws_route53_record" "webapp" {
+  name    = var.webapp_subdomain
+  zone_id = data.aws_route53_zone.zone.id
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.webapp.domain_name
+    zone_id                = aws_cloudfront_distribution.webapp.hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
+output "webapp-distribution-id" {
+  value = aws_cloudfront_distribution.webapp.id
 }
